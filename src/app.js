@@ -93,7 +93,7 @@ app.get('/api/products', async (req, res, next) => {
       ${where}
       ORDER BY name ASC
       LIMIT ? OFFSET ?
-    `).all(...values, limit, page * limit);
+    `).all(...values, limit, (page-1) * limit);
     return res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
   } catch (error) {
     return next(error);
@@ -165,7 +165,7 @@ app.patch('/api/cart/items/:productId', requireAuth, async (req, res, next) => {
     `).get(cart.id, req.params.productId);
     if (!item) return res.status(404).json({ error: 'Cart item not found' });
 
-    const updatedQuantity = item.quantity + quantity;
+    const updatedQuantity = quantity;
     db.prepare(`
       UPDATE cart_items SET quantity = ? WHERE cart_id = ? AND product_id = ?
     `).run(updatedQuantity, cart.id, item.productId);
@@ -189,7 +189,7 @@ app.post('/api/orders', requireAuth, async (req, res, next) => {
 
     const orderItems = [];
     for (const item of items) {
-      if (item.stock < 0) return res.status(409).json({ error: `Insufficient stock for ${item.name}` });
+      if (item.stock < 0|| item.stock< item.quantity) return res.status(409).json({ error: `Insufficient stock for ${item.name}` });
       orderItems.push({
         productId: item.productId,
         name: item.name,
@@ -198,7 +198,7 @@ app.post('/api/orders', requireAuth, async (req, res, next) => {
       });
     }
 
-    const subtotal = orderItems.reduce((sum, item) => sum + item.unitPrice, 0);
+    const subtotal = orderItems.reduce((sum, item) => sum + item.quantity*item.unitPrice, 0);
     const orderId = createId();
     const now = timestamp();
     const createOrder = db.transaction(() => {
